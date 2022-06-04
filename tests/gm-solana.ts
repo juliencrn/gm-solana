@@ -35,4 +35,37 @@ describe("gm-solana", () => {
 
     _baseAccount = baseAccount;
   });
+
+  it("receives and saves a gm message", async () => {
+    const message = "gm wagmi";
+    const user = provider.wallet.publicKey;
+
+    // fetch the base account
+    // ...and cache how many messages are there
+    const baseAccountBefore = await program.account.baseAccount.fetch(
+      _baseAccount.publicKey
+    );
+
+    // call the sayGm function with the message via RPC
+    const tx = await program.rpc.sayGm(message, {
+      accounts: {
+        baseAccount: _baseAccount.publicKey,
+        user,
+      }
+    });
+
+    // fetch the base account again
+    // ...and check that the gmCount has increased
+    const baseAccountAfter = await program.account.baseAccount.fetch(
+      _baseAccount.publicKey
+    );
+
+    assert.equal(baseAccountBefore.gmCount.toString(), "0");
+    assert.equal(baseAccountAfter.gmCount.toString(), "1");
+
+    const gmList = baseAccountAfter.gmList as any[];
+    assert.equal(gmList[0].message, message);
+    assert.equal(gmList[0].user.toString(), user.toString());
+    assert.equal(Number(gmList[0].timestamp.toString() > 0), true);
+  });
 });
