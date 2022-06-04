@@ -1,4 +1,5 @@
 {
+    "name": "gm-solana",
     "scripts": {
         "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
@@ -15,5 +16,6 @@
         "@types/mocha": "^9.0.0",
         "typescript": "^4.3.5",
         "prettier": "^2.6.2"
-    }
+    },
+    "license": "MIT"
 }
