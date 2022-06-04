@@ -2,3 +2,6 @@
 members = [
     "programs/*"
 ]
+
+[profile.release.package.gm-solana]
+overflow-checks = true
