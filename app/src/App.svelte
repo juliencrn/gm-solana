@@ -1,5 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte"
+  import * as idl from "./idl/gm_solana.json"
+  import type { GmSolana } from "./types/gm_solana"
+  import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js"
+  import { AnchorProvider, Idl, Program, web3 } from "@project-serum/anchor"
+
+  const { SystemProgram, Keypair } = web3
 
   export let name: string
 
@@ -7,6 +13,8 @@
 
   let wallet: any
   let account = ""
+  let gmList = []
+  let gmMessage = ""
 
   // reactively log the wallet connection when account state changes,
   $: account && console.log(`Connected to wallet: ${account}`)
@@ -38,6 +46,114 @@
   const handleConnectWallet = async () => {
     const resp = await wallet.connect()
   }
+
+  // ======== CONNECT TO NETWORK ========
+
+  // get program id from IDL, the metadata is only available after a deployment
+  const programID = new PublicKey(idl.metadata.address)
+
+  // we are using local network endpoint for now
+  const network = "http://127.0.0.1:8899"
+  // const network = clusterApiUrl('devnet');
+
+  // set up connection with "preflight commitment" set to "confirmed" level, which basically means that our app
+  // will treat the transaction as done only when the block is voted on by supermajority.
+  // this is similar to waiting for how many confirmations like in Ethereum.
+  // you can also set it to "finalized" (even more secure) or "processed" (changes might be rolled back)
+  const connection = new Connection(network, "confirmed")
+
+  // create a network and wallet context provider
+  const getProvider = () => {
+    const provider = new AnchorProvider(connection, wallet, {
+      preflightCommitment: "confirmed",
+    })
+    return provider
+  }
+
+  // helper function to get the program
+  const getProgram = () => {
+    const program = new Program(
+      idl as Idl,
+      programID,
+      getProvider()
+    ) as Program<GmSolana>
+    return program
+  }
+
+  // ======== INITIATE BASE ACCOUNT ========
+
+  // the base account that will hold the gm messages,
+  // if we want to share the same "gm Solana" instance then we need to provide the same base account
+  let baseAccountPublicKey: PublicKey
+  let baseAccountPublicKeyInput = "7Vc8epE1HBMqnvhByTemGLDkEh7uXN85o6zc9EVNjx5m" // UI state used for the input field
+
+  // because state in Solana is not tied with programs, users can create their own "baseAccount" for the gm app,
+  // the way to share and establish our baseAccount as the "official" one is to provide users with ours up front
+  // in the app client. otherwise we can also hardcode a "deployer account" in the program so only it can do it.
+  // the initializeAccount() here is a naive implementation that creates a new baseAccount on demand.
+  const initializeAccount = async () => {
+    const provider = getProvider()
+    const program = getProgram()
+    const _baseAccount = Keypair.generate()
+
+    // TODO: What is that?
+    Keypair
+
+    await program.rpc.initialize({
+      accounts: {
+        baseAccount: _baseAccount.publicKey,
+        user: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      },
+      signers: [_baseAccount],
+    })
+    baseAccountPublicKey = _baseAccount.publicKey
+    console.log("New BaseAccount:", baseAccountPublicKey.toString())
+
+    await getGmList() // first fetch
+  }
+
+  // alternative to initializeAccount(), loadAccount() allows you to pick up a previously created baseAccount
+  // so we can share the same "gm Solana" instance!
+  const loadAccount = async () => {
+    baseAccountPublicKey = new PublicKey(baseAccountPublicKeyInput)
+    console.log("Loaded BaseAccount:", baseAccountPublicKey.toString())
+
+    await getGmList() // first fetch
+  }
+
+  // ======== PROGRAM INTERACTION ========
+
+  // interacts with our program and updates local the gm list
+  const getGmList = async () => {
+    const program = getProgram()
+    const account = await program.account.baseAccount.fetch(
+      baseAccountPublicKey
+    )
+
+    console.log("Got the account", account)
+    gmList = account.gmList as any[]
+  }
+
+  // interacts with our program and submits a new gm message
+  const sayGm = async () => {
+    const provider = getProvider()
+    const program = getProgram()
+
+    await program.rpc.sayGm(gmMessage, {
+      accounts: {
+        baseAccount: baseAccountPublicKey,
+        user: provider.wallet.publicKey,
+      },
+      // if we don't supply a signer, it will try to use the connected wallet by default
+    })
+    console.log("gm successfully sent", gmMessage)
+    gmMessage = "" // clears the input field
+
+    await getGmList() // updates the local gm list
+  }
+
+  $: console.log("gmList:", gmList) // just some extra logging when the gm list changes
 </script>
 
 <main>
@@ -56,6 +172,47 @@
     {/if}
   {:else}
     <h2>Solana wallet not found.</h2>
+  {/if}
+
+  {#if account}
+    {#if !baseAccountPublicKey}
+      <button on:click={initializeAccount}>Initialize account</button>
+      or
+      <input
+        type="text"
+        placeholder="use existing account..."
+        bind:value={baseAccountPublicKeyInput}
+      />
+      <button on:click={loadAccount}>Load</button>
+    {:else}
+      Using gm solana base account: {baseAccountPublicKey.toString()}
+    {/if}
+  {/if}
+
+  {#if baseAccountPublicKey}
+    <div>
+      <h3>gm List:</h3>
+      <ul>
+        {#each gmList as gm}
+          <li>
+            <b>{gm.message}</b>, said {gm.user.toString().slice(0, 6)}... at {new Date(
+              gm.timestamp.toNumber() * 1000
+            ).toLocaleTimeString()}
+          </li>
+        {/each}
+      </ul>
+      <button on:click={getGmList}>Refresh gms!</button>
+    </div>
+
+    <div>
+      <h3>Say gm:</h3>
+      <input
+        type="text"
+        placeholder="write something..."
+        bind:value={gmMessage}
+      />
+      <button on:click={sayGm} disabled={!gmMessage}>Say gm!</button>
+    </div>
   {/if}
 </main>
 

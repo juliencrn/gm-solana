@@ -9,6 +9,7 @@ import css from 'rollup-plugin-css-only';
 import json from "@rollup/plugin-json";
 import builtins from "rollup-plugin-node-builtins";
 import globals from "rollup-plugin-node-globals";
+import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -39,7 +40,12 @@ export default {
 		sourcemap: true,
 		format: 'iife',
 		name: 'app',
-		file: 'public/build/bundle.js'
+		file: 'public/build/bundle.js',
+		globals: {
+			svelte: 'Svelte',
+			buffer: 'Buffer',
+			assert: 'assert',
+		}
 	},
 	plugins: [
 		svelte({
@@ -60,12 +66,8 @@ export default {
 		// https://github.com/rollup/plugins/tree/master/packages/commonjs
 		resolve({
 			browser: true,
-			dedupe: ['svelte']
-		}),
-		resolve({
-			browser: true,
-			dedupe: ["svelte"],
-			preferBuiltins: false, // set this to false
+			dedupe: ['svelte'],
+			preferBuiltins: false,
 		}),
 		commonjs(),
 		typescript({
@@ -88,6 +90,7 @@ export default {
 		json(),
 		globals(),
 		builtins(),
+		nodePolyfills(),
 	],
 	watch: {
 		clearScreen: false
